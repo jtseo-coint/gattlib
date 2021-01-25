@@ -1,26 +1,3 @@
-/*
- *
- *  BlueZ - Bluetooth protocol stack for Linux
- *
- *  Copyright (C) 2010  Nokia Corporation
- *  Copyright (C) 2010  Marcel Holtmann <marcel@holtmann.org>
- *
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
- *
- */
 
 #ifdef HAVE_CONFIG_H
 #include <config.h>
@@ -44,9 +21,9 @@
 #include "gattrib.h"
 #include "gatt.h"
 #include "gattlib.h"
-#include "gatttool.h"
+//#include "gatttool.h"
 
-#include "../../common/gattlib_internal_defs.h"
+//#include "gattlib_internal_defs.h"
 
 static gchar *opt_src = NULL;
 static gchar *opt_dst = NULL;
@@ -77,6 +54,11 @@ struct characteristic_data {
 	uint16_t start;
 	uint16_t end;
 };
+
+#define BLE_SCAN_TIMEOUT   4
+
+#include "iot.h"
+
 
 void notification_handler(const uuid_t* uuid, const uint8_t* data, size_t data_length, void* user_data) {
 	char uuid_str[MAX_LEN_UUID_STR + 1];
@@ -481,15 +463,8 @@ static GOptionEntry options[] = {
 	{ NULL },
 };
 
-int main(int argc, char *argv[])
+iot_item::iot_item()
 {
-	GOptionContext *context;
-	GOptionGroup *gatt_group, *params_group, *char_rw_group;
-	GError *gerr = NULL;
-	gatt_connection_t *connection;
-	unsigned long conn_options = 0;
-	BtIOSecLevel sec_level;
-	uint8_t dest_type;
 
 	opt_dst_type = g_strdup("public");
 	opt_sec_level = g_strdup("low");
@@ -550,22 +525,9 @@ int main(int argc, char *argv[])
 		goto done;
 	}
 
-	dest_type = get_dest_type_from_str(opt_dst_type);
-	if (dest_type == BDADDR_LE_PUBLIC) {
-		conn_options |= GATTLIB_CONNECTION_OPTIONS_LEGACY_BDADDR_LE_PUBLIC;
-	} else if (dest_type == BDADDR_LE_RANDOM) {
-		conn_options |= GATTLIB_CONNECTION_OPTIONS_LEGACY_BDADDR_LE_RANDOM;
-	}
-
-	sec_level = get_sec_level_from_str(opt_sec_level);
-	if (sec_level == BT_IO_SEC_LOW) {
-		conn_options |= GATTLIB_CONNECTION_OPTIONS_LEGACY_BT_SEC_LOW;
-	} else if (sec_level == BT_IO_SEC_MEDIUM) {
-		conn_options |= GATTLIB_CONNECTION_OPTIONS_LEGACY_BT_SEC_MEDIUM;
-	} else if (sec_level == BT_IO_SEC_HIGH) {
-		conn_options |= GATTLIB_CONNECTION_OPTIONS_LEGACY_BT_SEC_HIGH;
-	}
-
+	conn_options |= GATTLIB_CONNECTION_OPTIONS_LEGACY_BDADDR_LE_RANDOM;
+	conn_options |= GATTLIB_CONNECTION_OPTIONS_LEGACY_BT_SEC_LOW;
+	
 	conn_options |= GATTLIB_CONNECTION_OPTIONS_LEGACY_PSM(opt_psm);
 	conn_options |= GATTLIB_CONNECTION_OPTIONS_LEGACY_PSM(opt_mtu);
 
@@ -592,4 +554,14 @@ done:
 		exit(EXIT_FAILURE);
 	else
 		exit(EXIT_SUCCESS);
+}
+
+iot_item::~iot_item()
+{
+
+}
+
+main()
+{
+    printf("hello world.\n");
 }

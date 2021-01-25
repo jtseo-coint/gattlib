@@ -43,7 +43,7 @@
 #include "gattlib.h"
 #include "gatttool.h"
 
-#include "gattlib_internal_defs.h"
+#include "../../common/gattlib_internal_defs.h"
 
 static gatt_connection_t* g_connection = NULL;
 static GMainLoop *event_loop;

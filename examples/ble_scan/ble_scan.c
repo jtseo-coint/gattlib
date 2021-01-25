@@ -30,6 +30,8 @@ static void *ble_connect_device(void *arg) {
 	char uuid_str[MAX_LEN_UUID_STR + 1];
 	int ret, i;
 
+	if(strcmp(addr, "D1:A6:5A:2C:B0:36") != 0)
+		return NULL;
 	pthread_mutex_lock(&g_mutex);
 
 	printf("------------START %s ---------------\n", addr);
@@ -70,6 +72,27 @@ static void *ble_connect_device(void *arg) {
 				uuid_str);
 	}
 	free(characteristics);
+
+	printf("s: %d, c:%d\n", services_count, characteristics_count);
+	
+	const char *uuid2_str = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+	static uuid_t g_uuid;
+
+	if (gattlib_string_to_uuid(uuid2_str, strlen(uuid2_str) + 1, &g_uuid) < 0) {
+		printf("failt to convert\n");
+		goto disconnect_exit;
+	}
+
+	const char *data = "T";
+	ret = gattlib_write_char_by_uuid(gatt_connection, &g_uuid, data, 2);
+	if (ret != GATTLIB_SUCCESS)
+	{
+		printf("fail to send");
+	}else
+	{
+		printf("success to write");
+	}
+
 
 disconnect_exit:
 	gattlib_disconnect(gatt_connection);
