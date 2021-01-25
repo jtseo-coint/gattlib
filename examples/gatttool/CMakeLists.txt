@@ -49,7 +49,7 @@ else()
   include_directories(${bluez5_DIR} ${bluez5_DIR}/attrib ${bluez5_DIR}/btio ${bluez5_DIR}/lib)
 endif()
 
-set(gatttool_SRCS gatttool.c interactive.c utils.c)
+set(gatttool_SRCS gatttool.c interactive.c utils.c att.c)
 
 add_executable(gatttool ${gatttool_SRCS})
 target_link_libraries(gatttool ${GATTLIB_LIBRARIES} ${GATTLIB_LDFLAGS} ${GLIB_LDFLAGS} ${PCRE_LIBRARIES} readline tinfo pthread)
