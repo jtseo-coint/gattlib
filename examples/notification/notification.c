@@ -35,14 +35,17 @@ const uuid_t g_battery_level_uuid = CREATE_UUID16(0x2A19);
 static GMainLoop *m_main_loop;
 
 void notification_handler(const uuid_t* uuid, const uint8_t* data, size_t data_length, void* user_data) {
-	int i;
+	
+	char uuid_str[255];
 
-	printf("Notification Handler: ");
+	gattlib_uuid_to_string(uuid, uuid_str, sizeof(uuid_str));
 
-	for (i = 0; i < data_length; i++) {
-		printf("%02x ", data[i]);
-	}
-	printf("\n");
+	printf("uuid:%s\n", uuid_str);
+
+	strncpy(uuid_str, (char*)data, data_length);
+	uuid_str[data_length] = 0;
+	printf("Notification Handler: %s %d\n", uuid_str, data_length);
+	
 }
 
 static void on_user_abort(int arg) {
@@ -67,10 +70,46 @@ int main(int argc, char *argv[]) {
 		fprintf(stderr, "Fail to connect to the bluetooth device.\n");
 		return 1;
 	}
+	printf("connect\n");
 
+	uuid_t uuid, uuid_noti;
+	const char *uuid_sn = "2a25";
+	if (gattlib_string_to_uuid(uuid_sn, strlen(uuid_sn) + 1, &uuid) < 0) {
+		usage(argv);
+		return 1;
+	}
+
+	size_t len;
+	char *buffer = NULL;
+	ret = gattlib_read_char_by_uuid(connection, &uuid, (void **)&buffer, &len);
+
+	if(ret == GATTLIB_SUCCESS)
+	{
+		printf("rec:%s, %d\n",buffer, len);
+	}
+
+	const char *uuid_read = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+
+	if (gattlib_string_to_uuid(uuid_read, strlen(uuid_read) + 1, &uuid) < 0) {
+		usage(argv);
+		return 1;
+	}
+
+	const char *uuid_noti_str = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+
+	if (gattlib_string_to_uuid(uuid_noti_str, strlen(uuid_noti_str) + 1, &uuid_noti) < 0) {
+		usage(argv);
+		return 1;
+	}
+
+	ret = gattlib_write_char_by_uuid(connection, &uuid, "T", 2);
+	if (ret != GATTLIB_SUCCESS) {
+		fprintf(stderr, "Fail to write.\n");
+	}
+	
 	gattlib_register_notification(connection, notification_handler, NULL);
 
-	ret = gattlib_notification_start(connection, &g_battery_level_uuid);
+	ret = gattlib_notification_start(connection, &uuid_noti);
 	if (ret) {
 		fprintf(stderr, "Fail to start notification.\n");
 		goto DISCONNECT;
@@ -83,7 +122,7 @@ int main(int argc, char *argv[]) {
 	g_main_loop_run(m_main_loop);
 
 	// In case we quit the main loop, clean the connection
-	gattlib_notification_stop(connection, &g_battery_level_uuid);
+	gattlib_notification_stop(connection, &uuid_noti);
 	g_main_loop_unref(m_main_loop);
 
 DISCONNECT:
