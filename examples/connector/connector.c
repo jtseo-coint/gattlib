@@ -151,18 +151,6 @@ int slave_idle(STIIOT_Slave *_slave, unsigned int _cur)
 	_slave->connection = connection;
 	printf("connected. %s %d\n", _slave->device_str, g_connection_cnt);
 
-	size_t len;
-	char *buffer = NULL;
-	ret = gattlib_read_char_by_uuid(connection, &_slave->uuid_serialnum, (void **)&buffer, &len);
-
-	if(ret != GATTLIB_SUCCESS)
-	{
-		slave_disconnect(_slave);
-		return 0;
-	}
-	printf("serial: %s\n", buffer);
-	strcpy(_slave->serial_str, buffer);
-
 	gattlib_register_notification(connection, notification_handler, (void*)_slave);
 	ret = gattlib_notification_start(connection, &_slave->uuid_noti);
 	if (ret) {
@@ -171,8 +159,9 @@ int slave_idle(STIIOT_Slave *_slave, unsigned int _cur)
 		return 0;
 	}
 
-	slave_request(_slave, _cur);
-	return 1;
+	if(ret == 1)
+		return slave_request(_slave, _cur);
+	return ret;
 }
 
 int slave_add(const char *_device_str, STIIOT_Slave *_slave)
