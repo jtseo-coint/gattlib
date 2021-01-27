@@ -111,6 +111,21 @@ int slave_disconnect(STIIOT_Slave *_slave)
 	return 1;
 }
 
+int slave_request(STIIOT_Slave *_slave, unsigned int _cur)
+{
+	int ret;
+	ret = gattlib_write_char_by_uuid(_slave->connection, &_slave->uuid_write, "T", 2);
+	if (ret != GATTLIB_SUCCESS) {
+		fprintf(stderr, "Fail to write. %s\n", _slave->serial_str);
+		return 0;
+	}
+
+	if(_cur == 0)
+		_cur = timeGetTime();
+	_slave->last_update_time = _cur;
+	return ret;
+}
+
 int slave_add(const char *_device_str, STIIOT_Slave *_slave)
 {
 	int ret = 1;
@@ -149,6 +164,8 @@ int slave_add(const char *_device_str, STIIOT_Slave *_slave)
 		slave_disconnect(_slave);
 		return 0;
 	}
+
+	slave_request(_slave, 0);
 	//mark_
 	
 	return 1;
@@ -198,6 +215,19 @@ static void usage(char *argv[]) {
 	printf("%s <device_address>\n", argv[0]);
 }
 
+void slave_idle(unsigned int _time_cur)
+{
+	for(int i=0; i<g_connection_cnt; i++)
+	{
+		STIIOT_Slave *slave = &g_connections[i];
+
+		if(slave->last_update_time + slave->holding_time < _time_cur)
+		{
+			slave_request(slave, _time_cur);
+		}
+	}
+}
+
 int main(int argc, char *argv[]) {
 	int ret=1;
 	
@@ -210,11 +240,22 @@ int main(int argc, char *argv[]) {
 	// Catch CTRL-C
 	signal(SIGINT, on_user_abort);
 
-	m_main_loop = g_main_loop_new(NULL, 0);
-	g_main_loop_run(m_main_loop);
+	unsigned int time_last = timeGetTime(), time_cur = 0, time_delta = 0;
+	do{
+		time_cur = timeGetTime();
+		time_delta = time_cur - time_last;
+
+		if(time_delta > 1000)
+		{
+			slave_idle(time_cur);
+			time_last = time_cur;
+		}
+	}while(1);
+	//m_main_loop = g_main_loop_new(NULL, 0);
+	//g_main_loop_run(m_main_loop);
 
 	// In case we quit the main loop, clean the connection
-	g_main_loop_unref(m_main_loop);
+	//g_main_loop_unref(m_main_loop);
 
 	for(int i=0; i<g_connection_cnt; i++)
 		slave_disconnect(&g_connections[i]);
