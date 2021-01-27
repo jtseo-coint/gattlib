@@ -176,6 +176,21 @@ int slave_add(const char *_device_str, STIIOT_Slave *_slave)
 	strcpy(_slave->device_str, _device_str);
 
 	ret = slave_idle(_slave, 0);
+
+	if(ret == 1)
+	{
+		size_t len;
+		char *buffer = NULL;
+		ret = gattlib_read_char_by_uuid(connection, &_slave->uuid_serialnum, (void **)&buffer, &len);
+
+		if(ret != GATTLIB_SUCCESS)
+		{
+			slave_disconnect(_slave);
+			return 0;
+		}
+		printf("serial: %s\n", buffer);
+		strcpy(_slave->serial_str, buffer);
+	}
 	//mark_
 	
 	return ret;
