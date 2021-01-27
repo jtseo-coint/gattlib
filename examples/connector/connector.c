@@ -65,7 +65,7 @@ typedef struct __iiot_slave__{
 static	STIIOT_Slave	g_connections[MAX_SLAVE];
 static	int				g_connection_cnt = 0;
 
-int iot_reset()
+int slave_reset()
 {
 	g_connection_cnt = 0;
 
@@ -91,6 +91,7 @@ int iot_reset()
 		g_connections[i].holding_time = 600000; // 60 * 10 sec(10 minute);
 		g_connections[i].connection = NULL;
 	}
+	return 1;
 }
 
 void notification_handler(const uuid_t* uuid, const uint8_t* data, size_t data_length, void* user_data) {
@@ -112,6 +113,7 @@ int slave_disconnect(STIIOT_Slave *_slave)
 
 int slave_add(const char *_device_str, STIIOT_Slave *_slave)
 {
+	int ret = 1;
 	gatt_connection_t* connection;
 	if(g_connection_cnt >= MAX_SLAVE)
 	{
@@ -162,7 +164,7 @@ int socket_connect()
     g_sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (g_sockfd < 0) 
 	{
-        error("ERROR opening socket");
+        fprintf(stderr,"ERROR opening socket");
 		return 0;
 	}
     g_server = gethostbyname("127.0.0.1");
@@ -171,12 +173,12 @@ int socket_connect()
         return 0;
     }
     bzero((char *) &g_serv_addr, sizeof(g_serv_addr));
-    g_serv_addr.sin_family = AzF_INET;
+    g_serv_addr.sin_family = AF_INET;
     bcopy((char *)g_server->h_addr, (char *)&g_serv_addr.sin_addr.s_addr, g_server->h_length);
     g_serv_addr.sin_port = htons(g_portno);
-    if (connect(sockfd,(struct sockaddr *) &g_serv_addr,sizeof(g_serv_addr)) < 0) 
+    if (connect(g_sockfd,(struct sockaddr *) &g_serv_addr,sizeof(g_serv_addr)) < 0) 
 	{
-        error("ERROR connecting");
+        fprintf(stderr,"ERROR connecting");
 		return 0;
 	}
 	return 1;
@@ -199,6 +201,8 @@ static void usage(char *argv[]) {
 int main(int argc, char *argv[]) {
 	int ret=1;
 	
+	slave_reset();
+
 	if(slave_add("D1:A6:5A:2C:B0:36", &g_connections[g_connection_cnt]))
 		g_connection_cnt++;
 	
