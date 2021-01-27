@@ -65,22 +65,22 @@ typedef struct __iiot_slave__{
 static	STIIOT_Slave	g_connections[MAX_SLAVE];
 static	int				g_connection_cnt = 0;
 
-bool iot_reset()
+int iot_reset()
 {
 	g_connection_cnt = 0;
 
 	uuid_t uuid_noti, uuid_write, uuid_sn;
 	const char *uuid_str = "2a25";
 	if (gattlib_string_to_uuid(uuid_str, strlen(uuid_str) + 1, &uuid_sn) < 0) {
-		return false;
+		return 0;
 	}
 	uuid_str = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
 	if (gattlib_string_to_uuid(uuid_str, strlen(uuid_str) + 1, &uuid_write) < 0) {
-		return false;
+		return 0;
 	}
 	uuid_str = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
 	if (gattlib_string_to_uuid(uuid_str, strlen(uuid_str) + 1, &uuid_noti) < 0) {
-		return false;
+		return 0;
 	}
 	for(int i=0; i<MAX_SLAVE; i++)
 	{
@@ -102,21 +102,21 @@ void notification_handler(const uuid_t* uuid, const uint8_t* data, size_t data_l
 	printf("Notification: %s %s %d\n", slave->serial_str, slave->data, data_length);
 }
 
-bool slave_disconnect(STIIOT_Slave *_slave)
+int slave_disconnect(STIIOT_Slave *_slave)
 {
 	gattlib_notification_stop(_slave->connection, &_slave->uuid_noti);
 	gattlib_disconnect(_slave->connection);
 	_slave->connection = NULL;
-	return true;
+	return 1;
 }
 
-bool slave_add(const char *_device_str, STIIOT_Slave *_slave)
+int slave_add(const char *_device_str, STIIOT_Slave *_slave)
 {
 	gatt_connection_t* connection;
 	if(g_connection_cnt >= MAX_SLAVE)
 	{
 		fprintf(stderr, "fail to add slave.(over max limit %d)\n", MAX_SLAVE);
-		return false;
+		return 0;
 	}
 
 	strcpy(_slave->device_str, _device_str);
@@ -124,7 +124,7 @@ bool slave_add(const char *_device_str, STIIOT_Slave *_slave)
 	connection = gattlib_connect(NULL, _device_str, GATTLIB_CONNECTION_OPTIONS_LEGACY_DEFAULT);
 	if (connection == NULL) {
 		fprintf(stderr, "Fail to connect to the bluetooth device. %s\n", _device_str);
-		return false;
+		return 0;
 	}
 	_slave->connection = connection;
 	printf("connected. %s %d\n", _device_str, g_connection_cnt);
@@ -136,7 +136,7 @@ bool slave_add(const char *_device_str, STIIOT_Slave *_slave)
 	if(ret != GATTLIB_SUCCESS)
 	{
 		slave_disconnect(_slave);
-		return false;
+		return 0;
 	}
 	strcpy(_slave->serial_str, buffer);
 
@@ -145,30 +145,30 @@ bool slave_add(const char *_device_str, STIIOT_Slave *_slave)
 	if (ret) {
 		fprintf(stderr, "Fail to start notification.\n");
 		slave_disconnect(_slave);
-		return false;
+		return 0;
 	}
 	//mark_
 	
-	return true;
+	return 1;
 }
 
 int g_sockfd, g_portno = 1337;
 struct sockaddr_in g_serv_addr;
 struct hostent *g_server;
 
-bool socket_connect()
+int socket_connect()
 {
     //g_portno = 1337;//atoi(argv[2]);
     g_sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (g_sockfd < 0) 
 	{
         error("ERROR opening socket");
-		return false;
+		return 0;
 	}
     g_server = gethostbyname("127.0.0.1");
     if (g_server == NULL) {
         fprintf(stderr,"ERROR, no such host\n");
-        return false;
+        return 0;
     }
     bzero((char *) &g_serv_addr, sizeof(g_serv_addr));
     g_serv_addr.sin_family = AzF_INET;
@@ -177,15 +177,15 @@ bool socket_connect()
     if (connect(sockfd,(struct sockaddr *) &g_serv_addr,sizeof(g_serv_addr)) < 0) 
 	{
         error("ERROR connecting");
-		return false;
+		return 0;
 	}
-	return true;
+	return 1;
 }
 
-bool socket_disconnect()
+int socket_disconnect()
 {
     close(g_sockfd);
-	return true;
+	return 1;
 }
 
 static void on_user_abort(int arg) {
