@@ -45,9 +45,18 @@ static GMainLoop *m_main_loop;
 
 unsigned int timeGetTime()
 {
+	static unsigned int accum = 0, last;
 	struct timeval now;
 	gettimeofday(&now, NULL);
-	return now.tv_usec/1000;
+
+	unsigned int cur = now.tv_usec/1000;
+	if(accum == 0)
+		accum = last = cur;
+	
+	if(cur < last)
+		last = 0;
+	accum += cur - last;
+	return accum;
 }
 
 typedef struct __iiot_slave__{
@@ -121,6 +130,7 @@ int slave_request(STIIOT_Slave *_slave, unsigned int _cur)
 		fprintf(stderr, "Fail to write. %s\n", _slave->serial_str);
 		return 0;
 	}
+	printf("requested: %s\n", _slave->serial_str);
 
 	if(_cur == 0)
 		_cur = timeGetTime();
@@ -128,10 +138,46 @@ int slave_request(STIIOT_Slave *_slave, unsigned int _cur)
 	return ret;
 }
 
+
+int slave_idle(STIIOT_Slave *_slave, unsigned int _cur)
+{
+	int ret = 1;
+	gatt_connection_t *connection;
+	connection = gattlib_connect(NULL, _slave->device_str, GATTLIB_CONNECTION_OPTIONS_LEGACY_DEFAULT);
+	if (connection == NULL) {
+		fprintf(stderr, "Fail to connect to the bluetooth device. %s\n", _slave->device_str);
+		return 0;
+	}
+	_slave->connection = connection;
+	printf("connected. %s %d\n", _slave->device_str, g_connection_cnt);
+
+	size_t len;
+	char *buffer = NULL;
+	ret = gattlib_read_char_by_uuid(connection, &_slave->uuid_serialnum, (void **)&buffer, &len);
+
+	if(ret != GATTLIB_SUCCESS)
+	{
+		slave_disconnect(_slave);
+		return 0;
+	}
+	printf("serial: %s\n", buffer);
+	strcpy(_slave->serial_str, buffer);
+
+	gattlib_register_notification(connection, notification_handler, (void*)_slave);
+	ret = gattlib_notification_start(connection, &_slave->uuid_noti);
+	if (ret) {
+		fprintf(stderr, "Fail to start notification.\n");
+		slave_disconnect(_slave);
+		return 0;
+	}
+
+	slave_request(_slave, _cur);
+	return 1;
+}
+
 int slave_add(const char *_device_str, STIIOT_Slave *_slave)
 {
 	int ret = 1;
-	gatt_connection_t* connection;
 	if(g_connection_cnt >= MAX_SLAVE)
 	{
 		fprintf(stderr, "fail to add slave.(over max limit %d)\n", MAX_SLAVE);
@@ -140,10 +186,10 @@ int slave_add(const char *_device_str, STIIOT_Slave *_slave)
 
 	strcpy(_slave->device_str, _device_str);
 
-	slave_idle(slave);
+	ret = slave_idle(_slave, 0);
 	//mark_
 	
-	return 1;
+	return ret;
 }
 
 int g_sockfd, g_portno = 1337;
@@ -190,41 +236,6 @@ static void usage(char *argv[]) {
 	printf("%s <device_address>\n", argv[0]);
 }
 
-int slave_idle(STIIOT_Slave *_slave)
-{
-	int ret = 1;
-	gatt_connection_t *connection;
-	connection = gattlib_connect(NULL, _slave->device_str, GATTLIB_CONNECTION_OPTIONS_LEGACY_DEFAULT);
-	if (connection == NULL) {
-		fprintf(stderr, "Fail to connect to the bluetooth device. %s\n", _slave->device_str);
-		return 0;
-	}
-	_slave->connection = connection;
-	printf("connected. %s %d\n", _slave->device_str, g_connection_cnt);
-
-	size_t len;
-	char *buffer = NULL;
-	ret = gattlib_read_char_by_uuid(connection, &_slave->uuid_serialnum, (void **)&buffer, &len);
-
-	if(ret != GATTLIB_SUCCESS)
-	{
-		slave_disconnect(_slave);
-		return 0;
-	}
-	strcpy(_slave->serial_str, buffer);
-
-	gattlib_register_notification(connection, notification_handler, (void*)_slave);
-	ret = gattlib_notification_start(connection, &_slave->uuid_noti);
-	if (ret) {
-		fprintf(stderr, "Fail to start notification.\n");
-		slave_disconnect(_slave);
-		return 0;
-	}
-
-	slave_request(_slave, _time_cur);
-	return 1;
-}
-
 int master_idle(unsigned int _time_cur)
 {
 	for(int i=0; i<g_connection_cnt; i++)
@@ -233,9 +244,10 @@ int master_idle(unsigned int _time_cur)
 
 		if(slave->last_update_time + slave->holding_time < _time_cur)
 		{
-			slave_idle(slave);
+			slave_idle(slave, _time_cur);
 		}
 	}
+	return 1;
 }
 
 int main(int argc, char *argv[]) {
@@ -248,7 +260,7 @@ int main(int argc, char *argv[]) {
 	
 	//mark_
 	// Catch CTRL-C
-	signal(SIGINT, on_user_abort);
+	//signal(SIGINT, on_user_abort);
 
 	unsigned int time_last = timeGetTime(), time_cur = 0, time_delta = 0;
 	do{
@@ -257,8 +269,9 @@ int main(int argc, char *argv[]) {
 
 		if(time_delta > 1000)
 		{
-			slave_idle(time_cur);
+			master_idle(time_cur);
 			time_last = time_cur;
+			printf(".");
 		}
 	}while(1);
 	//m_main_loop = g_main_loop_new(NULL, 0);
