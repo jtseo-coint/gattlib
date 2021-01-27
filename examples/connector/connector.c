@@ -88,7 +88,7 @@ int slave_reset()
 		g_connections[i].uuid_write	= uuid_write;
 		g_connections[i].uuid_serialnum	= uuid_sn;
 		g_connections[i].device_str[0] = 0;
-		g_connections[i].holding_time = 600000; // 60 * 10 sec(10 minute);
+		g_connections[i].holding_time = 2000; //600000; // 60 * 10 sec(10 minute);
 		g_connections[i].connection = NULL;
 	}
 	return 1;
