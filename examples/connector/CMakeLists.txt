@@ -29,7 +29,7 @@ pkg_search_module(GLIB REQUIRED glib-2.0)
 pkg_search_module(PCRE REQUIRED libpcre)
 
 include_directories(${GLIB_INCLUDE_DIRS})
-set(connector_SRCS connector.c)
+set(connector_SRCS connector.cpp iot_slave.cpp)
 
 add_executable(connector ${connector_SRCS})
 target_link_libraries(connector ${GATTLIB_LIBRARIES} ${GATTLIB_LDFLAGS} ${GLIB_LDFLAGS} ${PCRE_LIBRARIES} pthread)

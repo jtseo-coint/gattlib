@@ -22,17 +22,23 @@
  */
 
 #include <assert.h>
-#include <glib.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <glib.h>
+
+#include "iot_slave.h"
 #include "gattlib.h"
 
 // Battery Level UUID
 const uuid_t g_battery_level_uuid = CREATE_UUID16(0x2A19);
 
 static GMainLoop *m_main_loop;
+
+typedef struct __iiot_slave__{
+	
+} STIIOT_Slave;
 
 void notification_handler(const uuid_t* uuid, const uint8_t* data, size_t data_length, void* user_data) {
 	
@@ -56,9 +62,13 @@ static void usage(char *argv[]) {
 	printf("%s <device_address>\n", argv[0]);
 }
 
+
 int main(int argc, char *argv[]) {
 	int ret;
 	gatt_connection_t* connection;
+
+	iot_slave slave();
+	slave.world();
 
 	if (argc != 2) {
 		usage(argv);
