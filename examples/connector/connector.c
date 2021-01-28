@@ -128,6 +128,7 @@ void notification_handler(const uuid_t* uuid, const uint8_t* data, size_t data_l
 
 	strncpy(slave->data, (char*)data, data_length);
 	slave->last_update_time = timeGetTime();
+	slave->time_to_rewrite = 5000;
 	slave->data[data_length] = 0;
 	printf("Notification: %s %s %d\n", slave->serial_str, slave->data, data_length);
 	
@@ -167,7 +168,7 @@ int slave_on_count(unsigned int _cur)
 			if(_cur <= slave->last_update_time + slave->time_to_rewrite)
 				continue;
 			fprintf(stderr, "try to reconnect.\n");
-			slave_disconnect(_slave);
+			slave_disconnect(slave);
 		}
 	}
 	return cnt;
@@ -189,7 +190,9 @@ int slave_idle(STIIOT_Slave *_slave, unsigned int _cur)
 	connection = gattlib_connect(NULL, _slave->device_str, GATTLIB_CONNECTION_OPTIONS_LEGACY_DEFAULT);
 	if (connection == NULL) {
 		fprintf(stderr, "Fail to connect to the bluetooth device. %s\n", _slave->device_str);
-		return 0;
+		_slave->last_update_time = _cur + _slave->time_to_rewrite;
+		_slave->time_to_rewrite += _slave->holding_time;
+		return 2;
 	}
 	_slave->connection = connection;
 	printf("connected. %s %d\n", _slave->device_str, g_connection_cnt);
@@ -319,18 +322,24 @@ int socket_idle(const char *_send_data)
 	float holding_time;
 
 	printf("from DB: %s\n", buffer);
-	n = sscanf(buffer, "%s %f", device_str, &holding_time);
-	if(n != 2)
-	{
-		fprintf(stderr, "Fail to parse packet %s.", buffer);
-		return 0;
-	}
-	STIIOT_Slave *slave = &g_connections[g_connection_cnt];
-	unsigned int holding_msec = (int)(holding_time * 1000);
-	slave->holding_time = holding_msec;
-	int ret = slave_add(device_str, slave);
-	if(ret != 0)
-		g_connection_cnt++;
+	char *parse = buffer;
+	int ret = 0;
+	do{
+		parse++;
+		n = sscanf(parse, "%s %f", device_str, &holding_time);
+		if(n != 2)
+		{
+			fprintf(stderr, "Fail to parse packet %s.", parse);
+			return 0;
+		}
+		STIIOT_Slave *slave = &g_connections[g_connection_cnt];
+		unsigned int holding_msec = (int)(holding_time * 1000);
+		slave->holding_time = holding_msec;
+		ret = slave_add(device_str, slave);
+		if(ret != 0)
+			g_connection_cnt++;
+		parse = strchr(parse, ',');
+	}while(parse);
 	return ret;
 }
 
