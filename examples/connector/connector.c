@@ -42,6 +42,7 @@
 const uuid_t g_battery_level_uuid = CREATE_UUID16(0x2A19);
 
 static GMainLoop *m_main_loop;
+int socket_idle(const char *);
 
 unsigned int timeGetTime()
 {
@@ -130,7 +131,7 @@ void notification_handler(const uuid_t* uuid, const uint8_t* data, size_t data_l
 	slave->data[data_length] = 0;
 	printf("Notification: %s %s %d\n", slave->serial_str, slave->data, data_length);
 	
-	char buffer[1024];
+	char buffer[1500];
 	sprintf(buffer, "%s %s", slave->serial_str, slave->data);
 	socket_idle(buffer);
 	slave_disconnect(slave);
@@ -275,15 +276,20 @@ int socket_idle(const char *_send_data)
 	if(g_sockfd < 0)
 		return 0;
 
-	int n;
-    n = write(g_sockfd,_send_data,strlen(_send_data));
-    if (n < 0) 
-         fprintf(stderr,"ERROR writing to socket\n");
-    char buffer[1024];
-	n = read(g_sockfd,buffer,1024);
+	int n = 0;
+	if(_send_data != NULL && *_send_data != 0)
+		n = send(g_sockfd,_send_data,strlen(_send_data), MSG_NOSIGNAL);
     if (n < 0) 
 	{
-         fprintf(stderr,"ERROR reading from socket");
+         fprintf(stderr,"ERROR writing to socket\n");
+		 socket_connect();
+		 return 0;
+	}
+    char buffer[1024];
+	n = recv(g_sockfd, buffer, 1024, MSG_DONTWAIT);
+    if (n < 0) 
+	{
+         //fprintf(stderr,"ERROR reading from socket");
 		 return 0;
 	}
 
@@ -324,6 +330,8 @@ static void usage(char *argv[]) {
 
 gboolean master_idle(gpointer _data)
 {
+	socket_idle(NULL);
+
 	unsigned int _time_cur = timeGetTime();
 	for(int i=0; i<g_connection_cnt; i++)
 	{
@@ -334,6 +342,7 @@ gboolean master_idle(gpointer _data)
 			slave_idle(slave, _time_cur);
 		}
 	}
+	
 	//return 1;
 	return TRUE;
 }
@@ -341,6 +350,7 @@ gboolean master_idle(gpointer _data)
 int main(int argc, char *argv[]) {
 	int ret=1;
 	
+	socket_connect();
 	//mark_
 	// Catch CTRL-C
 	signal(SIGINT, on_user_abort);
@@ -351,8 +361,7 @@ int main(int argc, char *argv[]) {
 	if(slave_add("D1:A6:5A:2C:B0:36", &g_connections[g_connection_cnt]))
 	{
 		g_connection_cnt++;
-		slave_add("D1:A6:5A:2C:B0:36", &g_connections[g_connection_cnt]);
-		g_connection_cnt++;
+		
 	}
 	else{
 		printf("fail to make default connection.\n");
@@ -366,7 +375,8 @@ int main(int argc, char *argv[]) {
 
 	for(int i=0; i<g_connection_cnt; i++)
 		slave_disconnect(&g_connections[i]);
-		
+	
+	socket_disconnect();
 	puts("Done");
 	return ret;
 }
