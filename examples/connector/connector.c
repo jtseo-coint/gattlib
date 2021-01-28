@@ -255,7 +255,9 @@ int socket_connect()
 		return 0;
 	}
     g_server = gethostbyname("127.0.0.1");
-    if (g_server == NULL) {
+    //g_server = gethostbyname("172.30.1.39");
+    
+	if (g_server == NULL) {
         fprintf(stderr,"ERROR, no such host\n");
         return 0;
     }
@@ -299,6 +301,7 @@ int socket_idle(const char *_send_data)
 	char device_str[255];
 	float holding_time;
 
+	printf("from DB: %s\n", buffer);
 	n = sscanf(buffer, "%s %f", device_str, &holding_time);
 	if(n != 2)
 	{
@@ -358,15 +361,6 @@ int main(int argc, char *argv[]) {
 	
 	slave_reset();
 
-	if(slave_add("D1:A6:5A:2C:B0:36", &g_connections[g_connection_cnt]))
-	{
-		g_connection_cnt++;
-		
-	}
-	else{
-		printf("fail to make default connection.\n");
-		return 0;
-	}
 	g_idle_add(master_idle, NULL);
 	g_main_loop_run(m_main_loop);
 	
