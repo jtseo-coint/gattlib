@@ -154,6 +154,23 @@ int slave_request(STIIOT_Slave *_slave, unsigned int _cur)
 	return ret;
 }
 
+int slave_on_count(unsigned int _cur)
+{
+	int cnt = 0;
+	for(int i=0; i<g_connection_cnt; i++)
+	{
+		STIIOT_Slave *slave = &g_connections[i];
+		if(slave->connection != NULL)
+		{
+			cnt++;
+			if(_cur <= slave->last_update_time + slave->time_to_rewrite)
+				continue;
+			fprintf(stderr, "try to reconnect.\n");
+			slave_disconnect(_slave);
+		}
+	}
+	return cnt;
+}
 
 int slave_idle(STIIOT_Slave *_slave, unsigned int _cur)
 {
@@ -325,6 +342,10 @@ static void usage(char *argv[]) {
 gboolean master_idle(gpointer _data)
 {
 	unsigned int _time_cur = timeGetTime();
+
+	if(slave_on_count(_time_cur) >= 5) // devices what keep connection are over than 5, wait for next turn.
+		return TRUE;
+
 	for(int i=0; i<g_connection_cnt; i++)
 	{
 		STIIOT_Slave *slave = &g_connections[i];
