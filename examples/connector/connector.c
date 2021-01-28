@@ -118,7 +118,10 @@ void notification_handler(const uuid_t* uuid, const uint8_t* data, size_t data_l
 	slave->last_update_time = timeGetTime();
 	slave->data[data_length] = 0;
 	printf("Notification: %s %s %d\n", slave->serial_str, slave->data, data_length);
-
+	
+	char buffer[1024];
+	sprintf(buffer, "%s %s", slave->serial_str, slave->data);
+	socket_idle(buffer);
 	slave_disconnect(slave);
 }
 
@@ -163,9 +166,25 @@ int slave_idle(STIIOT_Slave *_slave, unsigned int _cur)
 	return 1;
 }
 
+int slave_find(const char *_device_str)
+{
+	for(int i=0; i<g_connection_cnt; i++)
+	{
+		if(strcmp(_device_str, g_connections[i].device_str)==0)
+			return i;
+	}
+	return -1;
+}
+
 int slave_add(const char *_device_str, STIIOT_Slave *_slave)
 {
 	int ret = 1;
+	if(slave_find(_device_str) >= 0)
+	{
+		fprintf(stderr, "%s is in list.", _device_str);
+		return 0;
+	}
+
 	if(g_connection_cnt >= MAX_SLAVE)
 	{
 		fprintf(stderr, "fail to add slave.(over max limit %d)\n", MAX_SLAVE);
@@ -223,6 +242,44 @@ int socket_connect()
 		return 0;
 	}
 	return 1;
+}
+
+int socket_idle(const char *_send_data)
+{
+	if(g_sockfd < 0)
+		return 0;
+
+	int n;
+    n = write(g_sockfd,_send_data,strlen(_send_data));
+    if (n < 0) 
+         fprintf(stderr,"ERROR writing to socket\n");
+    char buffer[1024];
+	n = read(g_sockfd,buffer,1024);
+    if (n < 0) 
+	{
+         fprintf(stderr,"ERROR reading from socket");
+		 return 0;
+	}
+
+	if(n == 0)
+		return 1;
+
+	char device_str[255];
+	float holding_time;
+
+	n = sscanf(buffer, "%s %f", device_str, &holding_time);
+	if(n != 2)
+	{
+		fprintf(stderr, "Fail to parse packet %s.", buffer);
+		return 0;
+	}
+	STIIOT_Slave *slave = &g_connections[g_connection_cnt];
+	unsigned int holding_msec = (int)(holding_time * 1000);
+	slave->holding_time = holding_msec;
+	int ret = slave_add(device_str, slave);
+	if(ret != 0)
+		g_connection_cnt++;
+	return ret;
 }
 
 int socket_disconnect()
