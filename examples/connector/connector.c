@@ -38,6 +38,8 @@
 #include "iot_slave.h"
 #include "gattlib.h"
 
+#define DEF_SESSION 1
+//static GSourceFunc operation;
 // Battery Level UUID
 const uuid_t g_battery_level_uuid = CREATE_UUID16(0x2A19);
 
@@ -81,6 +83,8 @@ typedef struct __iiot_slave__{
 static	STIIOT_Slave	g_connections[MAX_SLAVE];
 static	int				g_connection_cnt = 0;
 
+int slave_reconnect(STIIOT_Slave*);
+
 int slave_reset()
 {
 	g_connection_cnt = 0;
@@ -104,8 +108,9 @@ int slave_reset()
 		g_connections[i].uuid_write	= uuid_write;
 		g_connections[i].uuid_serialnum	= uuid_sn;
 		g_connections[i].device_str[0] = 0;
+		g_connections[i].serial_str[0] = 0;
 		g_connections[i].holding_time = 2000; //600000; // 60 * 10 sec(10 minute);
-		g_connections[i].time_to_rewrite = 5000;
+		g_connections[i].time_to_rewrite = 35000;
 		g_connections[i].connection = NULL;
 	}
 	return 1;
@@ -125,23 +130,27 @@ int slave_disconnect(STIIOT_Slave *_slave)
 
 void notification_handler(const uuid_t* uuid, const uint8_t* data, size_t data_length, void* user_data) {
 	STIIOT_Slave *slave = (STIIOT_Slave*)user_data;
-
+	// marker
 	strncpy(slave->data, (char*)data, data_length);
 	slave->last_update_time = timeGetTime();
-	slave->time_to_rewrite = 5000;
+	slave->time_to_rewrite = 35000;
 	slave->data[data_length] = 0;
-	printf("Notification: %s %s %d\n", slave->serial_str, slave->data, data_length);
+	printf("Notification: %s %s %d mac: %s\n"
+		, slave->serial_str, slave->data, g_connection_cnt, slave->device_str
+		);
 	
 	char buffer[1500];
-	sprintf(buffer, "%s %s", slave->serial_str, slave->data);
+	sprintf(buffer, "%s %s mac: %s", slave->serial_str, slave->data, slave->device_str);
 	socket_idle(buffer);
+#ifndef DEF_SESSION
 	slave_disconnect(slave);
+#endif
 }
 
 int slave_request(STIIOT_Slave *_slave, unsigned int _cur)
 {
 	int ret = 1;
-	ret = gattlib_write_char_by_uuid(_slave->connection, &_slave->uuid_write, "T", 2);
+	ret = gattlib_write_char_by_uuid(_slave->connection, &_slave->uuid_write, "T", 1);
 	if (ret != GATTLIB_SUCCESS) {
 		fprintf(stderr, "Fail to write. %s\n", _slave->serial_str);
 		return 0;
@@ -167,16 +176,73 @@ int slave_on_count(unsigned int _cur)
 			cnt++;
 			if(_cur <= slave->last_update_time + slave->time_to_rewrite)
 				continue;
+				
 			fprintf(stderr, "try to reconnect.\n");
 			slave_disconnect(slave);
+		#ifdef DEF_SESSION
+			slave_reconnect(slave);
+		#endif
 		}
 	}
+
 	return cnt;
 }
 
+/*
+static void slave_connect_cb(gatt_connection_t* connection, void* user_data)
+{
+	STIIOT_Slave *slave = (STIIOT_Slave*)user_data;
+
+	int ret = 0;
+	unsigned int _cur = timeGetTime();
+	// marker
+	if (connection == NULL) {
+		fprintf(stderr, "Fail to connect to the bluetooth device. %s\n", slave->device_str);
+		slave->last_update_time = _cur + slave->time_to_rewrite;
+		slave->time_to_rewrite += slave->holding_time;
+		return;
+	}
+	slave->connection = connection;
+	printf("connected. %s %d\n", slave->device_str, g_connection_cnt);
+
+	if(slave->serial_str[0] == 0)
+	{
+		size_t len;
+		char *buffer = NULL;
+		ret = gattlib_read_char_by_uuid(slave->connection
+			, &slave->uuid_serialnum, (void **)&buffer, &len);
+
+		if(ret != GATTLIB_SUCCESS)
+		{
+			slave_disconnect(slave);
+			return;
+		}
+		printf("serial: %s\n", buffer);
+		strcpy(slave->serial_str, buffer);
+		free(buffer);
+	}
+
+	if(1)
+	{
+		//operation(connection);
+	}
+
+	slave_request(slave, _cur);
+
+	gattlib_register_notification(connection, notification_handler, (void*)slave);
+	ret = gattlib_notification_start(connection, &slave->uuid_noti);
+	if (ret) {
+		fprintf(stderr, "Fail to start notification.\n");
+		slave_disconnect(slave);
+		return;
+	}
+}
+//*/
 int slave_idle(STIIOT_Slave *_slave, unsigned int _cur)
 {
 	int ret = 1;
+#ifndef DEF_SESSION
+
 	gatt_connection_t *connection = _slave->connection;
 	if(connection != NULL)
 	{
@@ -187,15 +253,22 @@ int slave_idle(STIIOT_Slave *_slave, unsigned int _cur)
 		fprintf(stderr, "try to reconnect.\n");
 		slave_disconnect(_slave);
 	}
-	connection = gattlib_connect(NULL, _slave->device_str, GATTLIB_CONNECTION_OPTIONS_LEGACY_DEFAULT);
+	//connection = gattlib_connect_async(NULL, _slave->device_str, GATTLIB_CONNECTION_OPTIONS_LEGACY_BDADDR_LE_RANDOM
+	//		| GATTLIB_CONNECTION_OPTIONS_LEGACY_BT_SEC_LOW
+	//		//| GATTLIB_CONNECTION_OPTIONS_LEGACY_BT_SEC_HIGH
+	//		, slave_connect_cb, _slave);
+	connection = gattlib_connect(NULL, _slave->device_str, GATTLIB_CONNECTION_OPTIONS_LEGACY_BDADDR_LE_RANDOM
+			| GATTLIB_CONNECTION_OPTIONS_LEGACY_BT_SEC_LOW);
+			//| GATTLIB_CONNECTION_OPTIONS_LEGACY_BT_SEC_HIGH);
+	// marker
 	if (connection == NULL) {
-		fprintf(stderr, "Fail to connect to the bluetooth device. %s\n", _slave->device_str);
+		fprintf(stderr, "-Fail to connect to the bluetooth device. %s\n", _slave->device_str);
 		_slave->last_update_time = _cur + _slave->time_to_rewrite;
 		_slave->time_to_rewrite += _slave->holding_time;
 		return 2;
 	}
 	_slave->connection = connection;
-	printf("connected. %s %d\n", _slave->device_str, g_connection_cnt);
+	printf("-connected. %s %d\n", _slave->device_str, g_connection_cnt);
 
 	if(_cur == 0)
 	{
@@ -211,10 +284,14 @@ int slave_idle(STIIOT_Slave *_slave, unsigned int _cur)
 		}
 		printf("serial: %s\n", buffer);
 		strcpy(_slave->serial_str, buffer);
+		free(buffer);
 	}
-
+#else
+	if(_slave->connection == NULL)
+		return 0;
+#endif
 	slave_request(_slave, _cur);
-
+#ifndef DEF_SESSION
 	gattlib_register_notification(connection, notification_handler, (void*)_slave);
 	ret = gattlib_notification_start(connection, &_slave->uuid_noti);
 	if (ret) {
@@ -222,6 +299,7 @@ int slave_idle(STIIOT_Slave *_slave, unsigned int _cur)
 		slave_disconnect(_slave);
 		return 0;
 	}
+#endif
 	ret = 1;
 	
 	return ret;
@@ -236,6 +314,66 @@ int slave_find(const char *_device_str)
 	}
 	return -1;
 }
+
+#ifdef DEF_SESSION
+int slave_reconnect(STIIOT_Slave *_slave)
+{
+	int ret = 1, _cur = 0;
+	gatt_connection_t *connection = _slave->connection;
+
+	if(connection != NULL)
+	{
+		fprintf(stderr, "it's got connection, already.(%s)\n", _slave->serial_str);
+		return 0;
+	}
+	//connection = gattlib_connect_async(NULL, _slave->device_str, GATTLIB_CONNECTION_OPTIONS_LEGACY_BDADDR_LE_RANDOM
+	//		| GATTLIB_CONNECTION_OPTIONS_LEGACY_BT_SEC_LOW
+	//		//| GATTLIB_CONNECTION_OPTIONS_LEGACY_BT_SEC_HIGH
+	//		, slave_connect_cb, _slave);
+	connection = gattlib_connect(NULL, _slave->device_str, GATTLIB_CONNECTION_OPTIONS_LEGACY_BDADDR_LE_RANDOM
+			| GATTLIB_CONNECTION_OPTIONS_LEGACY_BT_SEC_LOW);
+			//| GATTLIB_CONNECTION_OPTIONS_LEGACY_BT_SEC_HIGH);
+	// marker
+	if (connection == NULL) {
+		fprintf(stderr, "-Fail to connect to the bluetooth device. %s\n", _slave->device_str);
+		_slave->last_update_time = _cur + _slave->time_to_rewrite;
+		_slave->time_to_rewrite += _slave->holding_time;
+		return 2;
+	}
+	_slave->connection = connection;
+	printf("-connected. %s %d\n", _slave->device_str, g_connection_cnt);
+
+	if(_cur == 0)
+	{
+		size_t len;
+		char *buffer = NULL;
+		ret = gattlib_read_char_by_uuid(_slave->connection
+			, &_slave->uuid_serialnum, (void **)&buffer, &len);
+
+		if(ret != GATTLIB_SUCCESS)
+		{
+			slave_disconnect(_slave);
+			return 0;
+		}
+		printf("serial: %s\n", buffer);
+		strcpy(_slave->serial_str, buffer);
+		free(buffer);
+	}
+
+	//slave_request(_slave, _cur);
+	
+	gattlib_register_notification(connection, notification_handler, (void*)_slave);
+	ret = gattlib_notification_start(connection, &_slave->uuid_noti);
+	if (ret) {
+		fprintf(stderr, "Fail to start notification.\n");
+		slave_disconnect(_slave);
+		return 0;
+	}
+	
+	ret = 1;
+	return ret;
+}
+#endif
 
 int slave_add(const char *_device_str, STIIOT_Slave *_slave)
 {
@@ -254,8 +392,11 @@ int slave_add(const char *_device_str, STIIOT_Slave *_slave)
 
 	strcpy(_slave->device_str, _device_str);
 
+#ifndef DEF_SESSION
 	ret = slave_idle(_slave, 0);
-
+#else
+	return slave_reconnect(_slave);
+#endif
 	//mark_
 	
 	return ret;
@@ -345,7 +486,7 @@ int socket_idle(const char *_send_data)
 
 int socket_disconnect()
 {
-    close(g_sockfd);
+    //close(g_sockfd);
 	return 1;
 }
 
@@ -353,9 +494,9 @@ static void on_user_abort(int arg) {
 	g_main_loop_quit(m_main_loop);
 }
 
-static void usage(char *argv[]) {
-	printf("%s <device_address>\n", argv[0]);
-}
+//static void usage(char *argv[]) {
+//	printf("%s <device_address>\n", argv[0]);
+//}
 
 gboolean master_idle(gpointer _data)
 {
@@ -363,8 +504,12 @@ gboolean master_idle(gpointer _data)
 
 	unsigned int _time_cur = timeGetTime();
 
-	if(slave_on_count(_time_cur) >= 5) // devices what keep connection are over than 5, wait for next turn.
+	int cnt = slave_on_count(_time_cur);
+
+#ifndef DEF_SESSION
+	if(cnt >= 5) // devices what keep connection are over than 5, wait for next turn.
 		return TRUE;
+#endif
 
 	for(int i=0; i<g_connection_cnt; i++)
 	{
