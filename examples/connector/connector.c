@@ -43,6 +43,7 @@
 // Battery Level UUID
 const uuid_t g_battery_level_uuid = CREATE_UUID16(0x2A19);
 
+static int g_slave_from_file = 0;
 static GMainLoop *m_main_loop;
 int socket_idle(const char *);
 
@@ -84,6 +85,7 @@ static	STIIOT_Slave	g_connections[MAX_SLAVE];
 static	int				g_connection_cnt = 0;
 
 int slave_reconnect(STIIOT_Slave*);
+int socket_disconnect();
 
 int slave_reset()
 {
@@ -135,8 +137,8 @@ void notification_handler(const uuid_t* uuid, const uint8_t* data, size_t data_l
 	slave->last_update_time = timeGetTime();
 	slave->time_to_rewrite = 35000;
 	slave->data[data_length] = 0;
-	printf("Notification: %s %s %d mac: %s\n"
-		, slave->serial_str, slave->data, g_connection_cnt, slave->device_str
+	printf("/"
+		//, slave->serial_str, g_connection_cnt, slave->device_str
 		);
 	
 	char buffer[1500];
@@ -337,11 +339,20 @@ int slave_reconnect(STIIOT_Slave *_slave)
 	if (connection == NULL) {
 		fprintf(stderr, "-Fail to connect to the bluetooth device. %s\n", _slave->device_str);
 		_slave->last_update_time = _cur + _slave->time_to_rewrite;
-		_slave->time_to_rewrite += _slave->holding_time;
+		//_slave->time_to_rewrite += _slave->holding_time;
 		return 2;
 	}
 	_slave->connection = connection;
 	printf("-connected. %s %d\n", _slave->device_str, g_connection_cnt);
+
+	if(g_slave_from_file == 0)
+	{
+		FILE *pf = fopen("slave_list.txt", "a");
+		if(pf){
+			fprintf(pf, "%s %d\n", _slave->device_str, _slave->holding_time);
+			fclose(pf);
+		}
+	}
 
 	if(_cur == 0)
 	{
@@ -436,8 +447,10 @@ int socket_connect()
 
 int socket_idle(const char *_send_data)
 {
-	if(g_sockfd < 0)
+	if(g_sockfd < 0){
+		 socket_connect();
 		return 0;
+	}
 
 	int n = 0;
 	if(_send_data != NULL && *_send_data != 0)
@@ -445,6 +458,7 @@ int socket_idle(const char *_send_data)
     if (n < 0) 
 	{
          fprintf(stderr,"ERROR writing to socket\n");
+		 socket_disconnect();
 		 socket_connect();
 		 return 0;
 	}
@@ -457,6 +471,9 @@ int socket_idle(const char *_send_data)
 	}
 
 	if(n == 0)
+		return 1;
+
+	if(g_slave_from_file)
 		return 1;
 
 	char device_str[255];
@@ -486,7 +503,7 @@ int socket_idle(const char *_send_data)
 
 int socket_disconnect()
 {
-    //close(g_sockfd);
+    close(g_sockfd);
 	return 1;
 }
 
@@ -504,7 +521,11 @@ gboolean master_idle(gpointer _data)
 
 	unsigned int _time_cur = timeGetTime();
 
-	int cnt = slave_on_count(_time_cur);
+	if(_time_cur > 86400000) // 86400000: a day, 2592000000: 30 day 
+	{
+		g_main_loop_quit(m_main_loop);
+		return FALSE;
+	}
 
 #ifndef DEF_SESSION
 	if(cnt >= 5) // devices what keep connection are over than 5, wait for next turn.
@@ -520,14 +541,17 @@ gboolean master_idle(gpointer _data)
 			slave_idle(slave, _time_cur);
 		}
 	}
-	
+
+	int cnt = slave_on_count(_time_cur);
+
 	//return 1;
 	return TRUE;
 }
 
 int main(int argc, char *argv[]) {
 	int ret=1;
-	
+
+	system("pwd");
 	socket_connect();
 	//mark_
 	// Catch CTRL-C
@@ -535,6 +559,25 @@ int main(int argc, char *argv[]) {
 	m_main_loop = g_main_loop_new(NULL, 0);
 	
 	slave_reset();
+
+	FILE *pf = fopen("slave_list.txt", "r");
+	if(pf){
+		char buf[255];
+		int cnt = 0;
+		do{
+			STIIOT_Slave *slave = &g_connections[g_connection_cnt];
+			cnt = fscanf(pf, "%s %d", buf, &slave->holding_time);
+			if(cnt == 2)
+			{
+				g_slave_from_file = 1;
+				if(slave_add(buf, slave)){
+					g_connection_cnt++;
+					slave->last_update_time = timeGetTime();
+				}
+			}
+		}while(cnt == 2);
+		fclose(pf);
+	}
 
 	g_idle_add(master_idle, NULL);
 	g_main_loop_run(m_main_loop);
@@ -547,5 +590,17 @@ int main(int argc, char *argv[]) {
 	
 	socket_disconnect();
 	puts("Done");
-	return ret;
+
+
+	pid_t pid;
+
+	printf("restart\n");
+    pid = fork();
+
+    if(pid == 0){
+        system("./cmd_restart");
+		return ret;
+	}else{
+		return ret;
+	}
 }
