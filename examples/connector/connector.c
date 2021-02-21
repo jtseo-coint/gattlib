@@ -42,7 +42,8 @@
 //static GSourceFunc operation;
 // Battery Level UUID
 const uuid_t g_battery_level_uuid = CREATE_UUID16(0x2A19);
-
+unsigned long g_reboot_time = 2592000000; // 30 day maintenance
+//marker
 static int g_slave_from_file = 0;
 static GMainLoop *m_main_loop;
 int socket_idle(const char *);
@@ -197,7 +198,7 @@ static void slave_connect_cb(gatt_connection_t* connection, void* user_data)
 
 	int ret = 0;
 	unsigned int _cur = timeGetTime();
-	// marker
+	
 	if (connection == NULL) {
 		fprintf(stderr, "Fail to connect to the bluetooth device. %s\n", slave->device_str);
 		slave->last_update_time = _cur + slave->time_to_rewrite;
@@ -262,7 +263,7 @@ int slave_idle(STIIOT_Slave *_slave, unsigned int _cur)
 	connection = gattlib_connect(NULL, _slave->device_str, GATTLIB_CONNECTION_OPTIONS_LEGACY_BDADDR_LE_RANDOM
 			| GATTLIB_CONNECTION_OPTIONS_LEGACY_BT_SEC_LOW);
 			//| GATTLIB_CONNECTION_OPTIONS_LEGACY_BT_SEC_HIGH);
-	// marker
+			
 	if (connection == NULL) {
 		fprintf(stderr, "-Fail to connect to the bluetooth device. %s\n", _slave->device_str);
 		_slave->last_update_time = _cur + _slave->time_to_rewrite;
@@ -335,7 +336,7 @@ int slave_reconnect(STIIOT_Slave *_slave)
 	connection = gattlib_connect(NULL, _slave->device_str, GATTLIB_CONNECTION_OPTIONS_LEGACY_BDADDR_LE_RANDOM
 			| GATTLIB_CONNECTION_OPTIONS_LEGACY_BT_SEC_LOW);
 			//| GATTLIB_CONNECTION_OPTIONS_LEGACY_BT_SEC_HIGH);
-	// marker
+			
 	if (connection == NULL) {
 		fprintf(stderr, "-Fail to connect to the bluetooth device. %s\n", _slave->device_str);
 		_slave->last_update_time = _cur + _slave->time_to_rewrite;
@@ -408,7 +409,6 @@ int slave_add(const char *_device_str, STIIOT_Slave *_slave)
 #else
 	return slave_reconnect(_slave);
 #endif
-	//mark_
 	
 	return ret;
 }
@@ -521,7 +521,8 @@ gboolean master_idle(gpointer _data)
 
 	unsigned int _time_cur = timeGetTime();
 
-	if(_time_cur > 86400000) // 86400000: a day, 2592000000: 30 day 
+
+	if(_time_cur > g_reboot_time) // 86400000: a day, 2592000000: 30 day 
 	{
 		g_main_loop_quit(m_main_loop);
 		return FALSE;
@@ -542,24 +543,37 @@ gboolean master_idle(gpointer _data)
 		}
 	}
 
-	int cnt = slave_on_count(_time_cur);
+	//int cnt = 
+	slave_on_count(_time_cur);
 
 	//return 1;
 	return TRUE;
 }
 
-int main(int argc, char *argv[]) {
-	int ret=1;
+void config_load()
+{
+	FILE *pf = fopen("bleserver.config", "r");
+	if(pf){
+		unsigned long looptime = 0;
+		int cnt;
+		cnt = fscanf(pf, "%u", &looptime);
+		//marker
+		if(cnt == 1 && looptime > 30000 && looptime < 2592000000)
+		{
+			g_reboot_time = looptime;
+			printf("maintenance loop is %lu.\n", g_reboot_time);
+		}
+		else
+			printf("configure file error looptime is %lu, lower than 30,000 or over than 30 day.\n", looptime);
+			
+		fclose(pf);
+	}else{
+		printf("fail to open 'bleserver.config' file.\n");
+	}
+}
 
-	system("pwd");
-	socket_connect();
-	//mark_
-	// Catch CTRL-C
-	signal(SIGINT, on_user_abort);
-	m_main_loop = g_main_loop_new(NULL, 0);
-	
-	slave_reset();
-
+void slave_load()
+{
 	FILE *pf = fopen("slave_list.txt", "r");
 	if(pf){
 		char buf[255];
@@ -577,8 +591,26 @@ int main(int argc, char *argv[]) {
 			}
 		}while(cnt == 2);
 		fclose(pf);
+	}else{
+		printf("fail to open 'slave_list.txt'.\n");
 	}
+}
 
+int main(int argc, char *argv[]) {
+	int ret=1;
+
+	system("pwd");
+	socket_connect();
+	//mark_
+	// Catch CTRL-C
+	
+	slave_reset();
+	config_load();
+	slave_load();
+
+	signal(SIGINT, on_user_abort);
+	m_main_loop = g_main_loop_new(NULL, 0);
+	
 	g_idle_add(master_idle, NULL);
 	g_main_loop_run(m_main_loop);
 	
@@ -588,7 +620,7 @@ int main(int argc, char *argv[]) {
 	for(int i=0; i<g_connection_cnt; i++)
 		slave_disconnect(&g_connections[i]);
 	
-	socket_disconnect();
+	//socket_disconnect();
 	puts("Done");
 
 
