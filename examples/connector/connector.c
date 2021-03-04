@@ -174,17 +174,19 @@ int slave_on_count(unsigned int _cur)
 	for(int i=0; i<g_connection_cnt; i++)
 	{
 		STIIOT_Slave *slave = &g_connections[i];
-		if(slave->connection != NULL)
+		//if(slave->connection != NULL)
 		{
 			cnt++;
 			if(_cur <= slave->last_update_time + slave->time_to_rewrite)
 				continue;
 				
 			fprintf(stderr, "try to reconnect.\n");
-			slave_disconnect(slave);
+			if(slave->connection != NULL)
+				slave_disconnect(slave);
 		#ifdef DEF_SESSION
 			slave_reconnect(slave);
 		#endif
+			slave->last_update_time = _cur;
 		}
 	}
 
@@ -552,13 +554,13 @@ gboolean master_idle(gpointer _data)
 
 void config_load()
 {
-	FILE *pf = fopen("bleserver.config", "r");
+	FILE *pf = fopen("/etc/coint/bleserver.config", "r");
 	if(pf){
 		unsigned long looptime = 0;
 		int cnt;
-		cnt = fscanf(pf, "%u", &looptime);
+		cnt = fscanf(pf, "%lu", &looptime);
 		//marker
-		if(cnt == 1 && looptime > 30000 && looptime < 2592000000)
+		if(cnt == 1 && looptime >= 30000 && looptime <= 2592000000)
 		{
 			g_reboot_time = looptime;
 			printf("maintenance loop is %lu.\n", g_reboot_time);
@@ -572,9 +574,9 @@ void config_load()
 	}
 }
 
-void slave_load()
+int slave_load()
 {
-	FILE *pf = fopen("slave_list.txt", "r");
+	FILE *pf = fopen("/etc/coint/slave_list.txt", "r");
 	if(pf){
 		char buf[255];
 		int cnt = 0;
@@ -591,9 +593,13 @@ void slave_load()
 			}
 		}while(cnt == 2);
 		fclose(pf);
+		if(g_connection_cnt == 0)
+			return 0;
 	}else{
 		printf("fail to open 'slave_list.txt'.\n");
+		return 0;
 	}
+	return 1;
 }
 
 int main(int argc, char *argv[]) {
@@ -606,7 +612,8 @@ int main(int argc, char *argv[]) {
 	
 	slave_reset();
 	config_load();
-	slave_load();
+	if(slave_load() == 0)
+		return 0;
 
 	signal(SIGINT, on_user_abort);
 	m_main_loop = g_main_loop_new(NULL, 0);
@@ -617,10 +624,10 @@ int main(int argc, char *argv[]) {
 	// In case we quit the main loop, clean the connection
 	g_main_loop_unref(m_main_loop);
 
-	for(int i=0; i<g_connection_cnt; i++)
-		slave_disconnect(&g_connections[i]);
+	//for(int i=0; i<g_connection_cnt; i++)
+	//	slave_disconnect(&g_connections[i]);
 	
-	//socket_disconnect();
+	socket_disconnect();
 	puts("Done");
 
 
@@ -630,7 +637,7 @@ int main(int argc, char *argv[]) {
     pid = fork();
 
     if(pid == 0){
-        system("./cmd_restart");
+        system("/home/pi/conint/InsightIoT/iot_ble_server/cmd_restart");
 		return ret;
 	}else{
 		return ret;
