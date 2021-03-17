@@ -38,6 +38,7 @@
 #include "iot_slave.h"
 #include "gattlib.h"
 
+#define MIN_TIMEOUT 35000
 #define DEF_SESSION 1
 //static GSourceFunc operation;
 // Battery Level UUID
@@ -75,7 +76,7 @@ typedef struct __iiot_slave__{
 	unsigned int	last_update_time;
 	unsigned int	time_to_rewrite;
 	gatt_connection_t* connection;
-	int	humit, degree, radio_pow, battery_lev;
+	int	radio_pow, battery_lev;
 	char device_str[128];
 	char serial_str[128];
 	char data[1024];
@@ -113,10 +114,19 @@ int slave_reset()
 		g_connections[i].device_str[0] = 0;
 		g_connections[i].serial_str[0] = 0;
 		g_connections[i].holding_time = 2000; //600000; // 60 * 10 sec(10 minute);
-		g_connections[i].time_to_rewrite = 35000;
+		g_connections[i].time_to_rewrite = MIN_TIMEOUT;
 		g_connections[i].connection = NULL;
 	}
 	return 1;
+}
+
+void slave_timeout_update(STIIOT_Slave *_slave)
+{
+	unsigned int timeout = _slave->holding_time * 2;
+	if(timeout < MIN_TIMEOUT)
+		timeout = MIN_TIMEOUT;
+
+	_slave->time_to_rewrite = timeout;
 }
 
 int slave_disconnect(STIIOT_Slave *_slave)
@@ -136,7 +146,7 @@ void notification_handler(const uuid_t* uuid, const uint8_t* data, size_t data_l
 	// marker
 	strncpy(slave->data, (char*)data, data_length);
 	slave->last_update_time = timeGetTime();
-	slave->time_to_rewrite = 35000;
+	slave_timeout_update(slave);
 	slave->data[data_length] = 0;
 	printf("/"
 		//, slave->serial_str, g_connection_cnt, slave->device_str
@@ -495,6 +505,7 @@ int socket_idle(const char *_send_data)
 		STIIOT_Slave *slave = &g_connections[g_connection_cnt];
 		unsigned int holding_msec = (int)(holding_time * 1000);
 		slave->holding_time = holding_msec;
+		slave_timeout_update(slave);
 		ret = slave_add(device_str, slave);
 		if(ret != 0)
 			g_connection_cnt++;
@@ -586,6 +597,7 @@ int slave_load()
 			if(cnt == 2)
 			{
 				g_slave_from_file = 1;
+				slave_timeout_update(slave);
 				if(slave_add(buf, slave)){
 					g_connection_cnt++;
 					slave->last_update_time = timeGetTime();
