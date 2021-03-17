@@ -637,7 +637,7 @@ int main(int argc, char *argv[]) {
     pid = fork();
 
     if(pid == 0){
-        system("/home/pi/conint/InsightIoT/iot_ble_server/cmd_restart");
+        system("/home/pi/InsightIoT/iot_ble_server/cmd_restart");
 		return ret;
 	}else{
 		return ret;
