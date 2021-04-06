@@ -38,11 +38,36 @@
 #include "iot_slave.h"
 #include "gattlib.h"
 
+#ifdef WIN32
+#include <windows.h>
+#elif _POSIX_C_SOURCE >= 199309L
+#include <time.h>   // for nanosleep
+#else
+#include <unistd.h> // for usleep
+#endif
+
 // Battery Level UUID
 const uuid_t g_battery_level_uuid = CREATE_UUID16(0x2A19);
 
 static GMainLoop *m_main_loop;
 int socket_idle(const char *);
+
+void sleep_ms(int milliseconds){ // cross-platform sleep function
+#ifdef WIN32
+    Sleep(milliseconds);
+#elif _POSIX_C_SOURCE >= 199309L
+    fflush(0);
+    struct timespec ts;
+    ts.tv_sec = milliseconds / 1000;
+    ts.tv_nsec = (milliseconds % 1000) * 1000000;
+    nanosleep(&ts, NULL);
+#else
+    fflush(0);
+    if (milliseconds >= 1000)
+      sleep(milliseconds / 1000);
+    usleep((milliseconds % 1000) * 1000);
+#endif
+}
 
 unsigned int timeGetTime()
 {
