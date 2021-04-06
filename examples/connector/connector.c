@@ -200,6 +200,8 @@ int slave_request(STIIOT_Slave *_slave, unsigned int _cur)
 		_cur = timeGetTime();
 	_slave->last_update_time = _cur;
 
+	sleep_ms(1000);
+
 	return ret;
 }
 
@@ -418,6 +420,8 @@ int slave_reconnect(STIIOT_Slave *_slave)
 		slave_disconnect(_slave);
 		return 0;
 	}
+
+	sleep_ms(1000);
 	
 	ret = 1;
 	return ret;
@@ -626,7 +630,10 @@ int slave_load()
 				if(slave_add(buf, slave)){
 					g_connection_cnt++;
 					slave->last_update_time = timeGetTime();
+				}else{
+					printf("fail to add %s\n", buf);
 				}
+				sleep_ms(1000);
 			}
 		}while(cnt == 2);
 		fclose(pf);
