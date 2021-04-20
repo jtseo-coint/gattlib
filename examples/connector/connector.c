@@ -667,7 +667,13 @@ int slave_load()
 
 int main(int argc, char *argv[]) {
 	int ret=1;
+	int initialdelay = 60000;
 
+	if(argc>1)
+		sscanf(argv[1], "%d", &initialdelay);
+
+	printf("delay %d\n", initialdelay);
+	sleep_ms(initialdelay); // for auto restart delay
 	system("pwd");
 	socket_connect();
 	//mark_
