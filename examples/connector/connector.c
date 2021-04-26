@@ -166,6 +166,20 @@ int slave_disconnect(STIIOT_Slave *_slave)
 	return 1;
 }
 
+int slave_init(STIIOT_Slave *_slave)
+{
+	int ret = 1;
+	ret = gattlib_write_char_by_uuid(_slave->connection, &_slave->uuid_write, "rst", 3);
+	if (ret != GATTLIB_SUCCESS) {
+		fprintf(stderr, "Fail to write. %s\n", _slave->serial_str);
+		return 0;
+	}
+	ret = 1;
+	printf("reset: %s\n", _slave->serial_str);
+	sleep_ms(100);
+	return ret;
+}
+
 int slave_return(STIIOT_Slave *_slave)
 {
 	int ret = 1;
@@ -179,7 +193,6 @@ int slave_return(STIIOT_Slave *_slave)
 	sleep_ms(100);
 	return ret;
 }
-
 void notification_handler(const uuid_t* uuid, const uint8_t* data, size_t data_length, void* user_data) {
 	STIIOT_Slave *slave = (STIIOT_Slave*)user_data;
 	// marker
@@ -188,15 +201,18 @@ void notification_handler(const uuid_t* uuid, const uint8_t* data, size_t data_l
 	slave_timeout_update(slave);
 	slave->data[data_length] = 0;
 
-	slave_return(slave);
+	
+
 	
 	char buffer[1500];
-	if(strcmp(slave->data, "Initialized") == 0)
+	if(strcmp(slave->data, "Initialized\r\n") == 0)
 	{
+		printf("Initialized\n");
 		sprintf(buffer, "%s %s mac: %s", slave->serial_str, slave->data, slave->device_str);
 		socket_idle(buffer);
 	}else{
-		sprintf(buffer, "%s %s mac: %s", slave->serial_str, slave->data, slave->device_str);
+		sprintf(buffer, "%s %s mac: %s", slave->serial_str, slave->data, slave->device_str);	
+		slave_return(slave);
 		socket_idle(buffer);
 	}
 #ifndef DEF_SESSION
@@ -440,7 +456,8 @@ int slave_reconnect(STIIOT_Slave *_slave)
 		return 0;
 	}
 
-	sleep_ms(1000);
+	sleep_ms(100);
+	slave_init(_slave);
 	
 	ret = 1;
 	return ret;
